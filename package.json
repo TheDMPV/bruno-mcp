@@ -1,5 +1,5 @@
 {
-  "name": "@thedmpv/bruno-mcp",
+  "name": "@dmpv/bruno-mcp",
   "version": "0.1.0",
   "description": "Read-only MCP server and indexer for Bruno API collections.",
   "type": "module",

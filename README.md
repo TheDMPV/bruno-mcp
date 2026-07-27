@@ -31,24 +31,24 @@ deterministic tools for endpoint discovery. It never sends API requests.
 Run the MCP server against a collection:
 
 ```bash
-npx -y @thedmpv/bruno-mcp serve ./path/to/collection
+npx -y @dmpv/bruno-mcp serve ./path/to/collection
 ```
 
 Generate a persistent index:
 
 ```bash
-npx -y @thedmpv/bruno-mcp index ./path/to/collection \
+npx -y @dmpv/bruno-mcp index ./path/to/collection \
   --output ./generated/api-index.json
 ```
 
 Inspect a collection without writing files:
 
 ```bash
-npx -y @thedmpv/bruno-mcp inspect ./path/to/collection
+npx -y @dmpv/bruno-mcp inspect ./path/to/collection
 ```
 
 The unscoped npm name `bruno-mcp` is owned by another publisher, so this
-project is distributed as `@thedmpv/bruno-mcp`. Its executable is still named
+project is distributed as `@dmpv/bruno-mcp`. Its executable is still named
 `bruno-mcp`.
 
 ## MCP client configuration
@@ -62,7 +62,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@thedmpv/bruno-mcp@0.1.0",
+        "@dmpv/bruno-mcp@0.1.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -117,7 +117,7 @@ import {
   buildBrunoIndex,
   searchIndex,
   writeBrunoIndex
-} from "@thedmpv/bruno-mcp";
+} from "@dmpv/bruno-mcp";
 
 const index = await buildBrunoIndex("./collection");
 const endpoints = searchIndex(index, {
@@ -141,7 +141,7 @@ npm package dry run.
 
 ## Publishing
 
-1. Confirm the npm account owns or has access to the `@thedmpv` scope.
+1. Confirm the npm account owns or has access to the `@dmpv` scope.
 2. Add an npm automation token as the `NPM_TOKEN` repository secret.
 3. Update `package.json` to the release version and merge it.
 4. Push a matching version tag, such as `v0.1.0`.
