@@ -1,0 +1,30 @@
+meta {
+  name: Create user
+  type: http
+  seq: 2
+  tags: [
+    users
+  ]
+}
+
+post {
+  url: {{baseUrl}}/users
+  body: json
+  auth: bearer
+}
+
+body:json {
+  {
+    "name": "Ada"
+  }
+}
+
+tests {
+  test("created", function() {
+    expect(res.status).to.equal(201);
+  });
+}
+
+docs {
+  Creates a user.
+}

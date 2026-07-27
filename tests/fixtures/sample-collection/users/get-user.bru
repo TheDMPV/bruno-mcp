@@ -1,0 +1,39 @@
+meta {
+  name: Get user
+  type: http
+  seq: 1
+  tags: [
+    users
+    smoke
+  ]
+}
+
+get {
+  url: {{baseUrl}}/users/:id?include=profile
+  body: none
+  auth: bearer
+}
+
+params:path {
+  id: 123
+}
+
+params:query {
+  include: profile
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Fetches one user and their optional profile.
+}
