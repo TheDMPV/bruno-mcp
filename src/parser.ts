@@ -6,6 +6,7 @@ import { parseRequest } from "@usebruno/filestore";
 import type {
   BrunoEndpoint,
   BrunoRequestType,
+  BrunoResponseExample,
   IndexedBody,
   IndexedField,
 } from "./types.js";
@@ -105,6 +106,41 @@ function parseRequestWithoutStdout(content: string): unknown {
   } finally {
     console.log = originalLog;
   }
+}
+
+export function parseBruResponseExamples(
+  content: string,
+): BrunoResponseExample[] {
+  const parsed = record(parseRequestWithoutStdout(content));
+  if (!Array.isArray(parsed.examples)) {
+    return [];
+  }
+
+  return parsed.examples.map((value, index) => {
+    const example = record(value);
+    const response = record(example.response);
+    const responseBody = record(response.body);
+    const responseHeaders = Array.isArray(response.headers)
+      ? response.headers.map(record)
+      : [];
+    const contentTypeHeader = responseHeaders.find(
+      (header) => string(header.name).toLowerCase() === "content-type",
+    );
+
+    return {
+      name: string(example.name, `Example ${String(index + 1)}`),
+      description: string(example.description),
+      response: {
+        status: number(response.status, 200),
+        statusText: string(response.statusText, "OK"),
+        contentType: string(contentTypeHeader?.value),
+        body: {
+          type: string(responseBody.type, "text"),
+          content: responseBody.content ?? "",
+        },
+      },
+    };
+  });
 }
 
 export function parseBruEndpoint(

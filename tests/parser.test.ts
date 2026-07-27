@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   normalizeEndpointPath,
   parseBruEndpoint,
+  parseBruResponseExamples,
 } from "../src/parser.js";
 
 describe("normalizeEndpointPath", () => {
@@ -77,6 +78,75 @@ headers {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("parseBruResponseExamples", () => {
+  it("returns complete saved response bodies without request data", () => {
+    const examples = parseBruResponseExamples(`meta {
+  name: Get user
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/users/123
+  body: none
+  auth: none
+}
+
+example {
+  name: user found 200
+  description: A saved user response.
+
+  request: {
+    url: {{baseUrl}}/users/123
+    method: GET
+    mode: none
+  }
+
+  response: {
+    headers: {
+      content-type: application/json
+      set-cookie: session=not-exposed
+    }
+
+    status: {
+      code: 200
+      text: OK
+    }
+
+    body: {
+      type: json
+      content: '''
+        {
+          "id": 123,
+          "name": "Ada"
+        }
+      '''
+    }
+  }
+}`);
+
+    expect(examples).toEqual([
+      {
+        name: "user found 200",
+        description: "A saved user response.",
+        response: {
+          status: 200,
+          statusText: "OK",
+          contentType: "application/json",
+          body: {
+            type: "json",
+            content: `{
+  "id": 123,
+  "name": "Ada"
+}`,
+          },
+        },
+      },
+    ]);
+    expect(JSON.stringify(examples)).not.toContain("not-exposed");
   });
 });
 
