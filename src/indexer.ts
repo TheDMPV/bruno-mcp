@@ -10,6 +10,7 @@ import path from "node:path";
 
 import { discoverBruFiles, readCollectionName } from "./discovery.js";
 import { parseBruEndpoint } from "./parser.js";
+import { sourceHash } from "./source-hash.js";
 import type {
   BrunoEndpoint,
   BrunoFolder,
@@ -30,7 +31,7 @@ async function sourceManifest(root: string): Promise<BrunoSourceFile[]> {
       const content = await readFile(file, "utf8");
       return {
         file: path.relative(root, file).split(path.sep).join("/"),
-        hash: createHash("sha256").update(content).digest("hex"),
+        hash: sourceHash(content),
       };
     }),
   );
@@ -89,7 +90,7 @@ export async function buildBrunoIndex(
       const content = await readFile(file, "utf8");
       sources.push({
         file: relativeFile,
-        hash: createHash("sha256").update(content).digest("hex"),
+        hash: sourceHash(content),
       });
       const endpoint = parseBruEndpoint(content, file, root);
       if (endpoint) {

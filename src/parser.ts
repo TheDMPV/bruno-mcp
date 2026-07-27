@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { parseRequest } from "@usebruno/filestore";
 
+import { sourceHash } from "./source-hash.js";
 import type {
   BrunoEndpoint,
   BrunoRequestType,
@@ -202,7 +203,7 @@ export function parseBruEndpoint(
       : 0,
     exampleCount: examples.length,
     responseExamples: examples,
-    sourceHash: createHash("sha256").update(content).digest("hex"),
+    sourceHash: sourceHash(content),
   };
 
   return {
