@@ -1,12 +1,76 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  mkdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 import { discoverBruFiles, readCollectionName } from "./discovery.js";
 import { parseBruEndpoint } from "./parser.js";
-import type { BrunoEndpoint, BrunoIndex, SearchOptions } from "./types.js";
+import type {
+  BrunoEndpoint,
+  BrunoFolder,
+  BrunoIndex,
+  BrunoSourceFile,
+  SearchOptions,
+} from "./types.js";
+import { packageVersion } from "./version.js";
 
 export interface BuildIndexOptions {
   now?: () => Date;
+}
+
+async function sourceManifest(root: string): Promise<BrunoSourceFile[]> {
+  const files = await discoverBruFiles(root);
+  return Promise.all(
+    files.map(async (file) => {
+      const content = await readFile(file, "utf8");
+      return {
+        file: path.relative(root, file).split(path.sep).join("/"),
+        hash: createHash("sha256").update(content).digest("hex"),
+      };
+    }),
+  );
+}
+
+function sourceFingerprint(sources: BrunoSourceFile[]): string {
+  return createHash("sha256").update(JSON.stringify(sources)).digest("hex");
+}
+
+function folders(endpoints: BrunoEndpoint[]): BrunoFolder[] {
+  const paths = new Set<string>();
+
+  for (const endpoint of endpoints) {
+    const parts = endpoint.folder.split("/").filter(Boolean);
+    for (let index = 1; index <= parts.length; index += 1) {
+      paths.add(parts.slice(0, index).join("/"));
+    }
+  }
+
+  return [...paths]
+    .sort((left, right) => left.localeCompare(right))
+    .map((folderPath) => {
+      const prefix = `${folderPath}/`;
+      return {
+        path: folderPath,
+        name: path.posix.basename(folderPath),
+        parent:
+          path.posix.dirname(folderPath) === "."
+            ? ""
+            : path.posix.dirname(folderPath),
+        endpointCount: endpoints.filter(
+          (endpoint) =>
+            endpoint.folder === folderPath ||
+            endpoint.folder.startsWith(prefix),
+        ).length,
+        directEndpointCount: endpoints.filter(
+          (endpoint) => endpoint.folder === folderPath,
+        ).length,
+      };
+    });
 }
 
 export async function buildBrunoIndex(
@@ -17,11 +81,17 @@ export async function buildBrunoIndex(
   const files = await discoverBruFiles(root);
   const endpoints: BrunoEndpoint[] = [];
   const warnings: BrunoIndex["warnings"] = [];
+  const sources: BrunoSourceFile[] = [];
 
   for (const file of files) {
     const relativeFile = path.relative(root, file).split(path.sep).join("/");
     try {
-      const endpoint = parseBruEndpoint(await readFile(file, "utf8"), file, root);
+      const content = await readFile(file, "utf8");
+      sources.push({
+        file: relativeFile,
+        hash: createHash("sha256").update(content).digest("hex"),
+      });
+      const endpoint = parseBruEndpoint(content, file, root);
       if (endpoint) {
         endpoints.push(endpoint);
       }
@@ -41,15 +111,58 @@ export async function buildBrunoIndex(
   );
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: (options.now?.() ?? new Date()).toISOString(),
+    generator: {
+      name: "@dmpv/bruno-mcp",
+      version: packageVersion,
+    },
     collection: {
       name: await readCollectionName(root),
       endpointCount: endpoints.length,
+      sourceFingerprint: sourceFingerprint(sources),
     },
+    sources,
+    folders: folders(endpoints),
     endpoints,
     warnings,
   };
+}
+
+function isBrunoIndex(value: unknown): value is BrunoIndex {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<BrunoIndex>;
+  return (
+    candidate.schemaVersion === 2 &&
+    candidate.generator?.name === "@dmpv/bruno-mcp" &&
+    typeof candidate.generator.version === "string" &&
+    typeof candidate.generatedAt === "string" &&
+    typeof candidate.collection?.name === "string" &&
+    typeof candidate.collection.sourceFingerprint === "string" &&
+    Array.isArray(candidate.sources) &&
+    Array.isArray(candidate.folders) &&
+    Array.isArray(candidate.endpoints) &&
+    Array.isArray(candidate.warnings)
+  );
+}
+
+export async function readBrunoIndex(inputPath: string): Promise<BrunoIndex> {
+  const parsed: unknown = JSON.parse(await readFile(inputPath, "utf8"));
+  if (!isBrunoIndex(parsed)) {
+    throw new Error("Unsupported or invalid Bruno index.");
+  }
+  return parsed;
+}
+
+export async function isBrunoIndexFresh(
+  index: BrunoIndex,
+  collectionPath: string,
+): Promise<boolean> {
+  const sources = await sourceManifest(path.resolve(collectionPath));
+  return sourceFingerprint(sources) === index.collection.sourceFingerprint;
 }
 
 export async function writeBrunoIndex(
@@ -58,7 +171,18 @@ export async function writeBrunoIndex(
 ): Promise<void> {
   const absoluteOutput = path.resolve(outputPath);
   await mkdir(path.dirname(absoluteOutput), { recursive: true });
-  await writeFile(absoluteOutput, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+  const temporaryOutput = `${absoluteOutput}.${String(process.pid)}.tmp`;
+  try {
+    await writeFile(
+      temporaryOutput,
+      `${JSON.stringify(index, null, 2)}\n`,
+      "utf8",
+    );
+    await rename(temporaryOutput, absoluteOutput);
+  } catch (error) {
+    await unlink(temporaryOutput).catch(() => undefined);
+    throw error;
+  }
 }
 
 function normalized(value: string): string {
@@ -108,6 +232,9 @@ export function searchIndex(
   const query = normalized(options.query ?? "");
   const method = options.method?.toUpperCase();
   const folder = normalized(options.folder ?? "");
+  const pathPrefix = options.pathPrefix
+    ? normalizePathPrefix(options.pathPrefix)
+    : "";
   const requiredTags = (options.tags ?? []).map(normalized);
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
 
@@ -116,6 +243,7 @@ export function searchIndex(
       if (method && endpoint.method !== method) return false;
       if (options.type && endpoint.type !== options.type) return false;
       if (folder && !normalized(endpoint.folder).includes(folder)) return false;
+      if (pathPrefix && !endpoint.path.startsWith(pathPrefix)) return false;
       if (
         requiredTags.length > 0 &&
         !requiredTags.every((tag) => endpoint.tags.map(normalized).includes(tag))
@@ -133,6 +261,12 @@ export function searchIndex(
     )
     .slice(0, limit)
     .map((result) => result.endpoint);
+}
+
+function normalizePathPrefix(value: string): string {
+  const trimmed = value.trim().split(/[?#]/, 1)[0] ?? "";
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 export function getEndpoint(
@@ -159,12 +293,53 @@ export function getEndpoint(
 
 export class BrunoIndexStore {
   #index: BrunoIndex | null = null;
+  #source: "generated" | "persistent" = "generated";
+  #indexPath: string | null = null;
 
-  constructor(readonly collectionPath: string) {}
+  constructor(
+    readonly collectionPath: string,
+    readonly options: { indexPath?: string | undefined } = {},
+  ) {}
+
+  async initialize(): Promise<BrunoIndex> {
+    const root = path.resolve(this.collectionPath);
+    const candidates = this.options.indexPath
+      ? [path.resolve(this.options.indexPath)]
+      : [
+          path.join(root, "docs", "api-index.json"),
+          path.join(root, ".bruno-mcp", "api-index.json"),
+        ];
+
+    for (const candidate of candidates) {
+      try {
+        const index = await readBrunoIndex(candidate);
+        if (await isBrunoIndexFresh(index, root)) {
+          this.#index = index;
+          this.#source = "persistent";
+          this.#indexPath = candidate;
+          return index;
+        }
+      } catch {
+        // Missing, stale, or incompatible indexes fall back to source parsing.
+      }
+    }
+
+    return this.rebuild();
+  }
 
   async rebuild(): Promise<BrunoIndex> {
     this.#index = await buildBrunoIndex(this.collectionPath);
+    this.#source = "generated";
+    this.#indexPath = null;
     return this.#index;
+  }
+
+  get source(): "generated" | "persistent" {
+    return this.#source;
+  }
+
+  get indexPath(): string | null {
+    return this.#indexPath;
   }
 
   get current(): BrunoIndex {

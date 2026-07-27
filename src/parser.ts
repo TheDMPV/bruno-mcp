@@ -95,23 +95,31 @@ function contractHash(endpoint: Omit<BrunoEndpoint, "contractHash">): string {
     .digest("hex");
 }
 
-function parseRequestWithoutStdout(content: string): unknown {
+function parseRequestQuietly(content: string): unknown {
   const originalLog = console.log;
+  const originalError = console.error;
 
   try {
-    // Bruno logs grammar failures with console.log before throwing. MCP reserves
-    // stdout for protocol messages, so those diagnostics must not reach it.
+    // Bruno logs some grammar failures before returning or throwing. MCP
+    // reserves stdout for protocol messages, and bulk indexing should report
+    // structured warnings instead of emitting parser internals.
     console.log = () => undefined;
+    console.error = () => undefined;
     return parseRequest(content, { format: "bru" });
   } finally {
     console.log = originalLog;
+    console.error = originalError;
   }
 }
 
 export function parseBruResponseExamples(
   content: string,
 ): BrunoResponseExample[] {
-  const parsed = record(parseRequestWithoutStdout(content));
+  const parsed = record(parseRequestQuietly(content));
+  return responseExamples(parsed);
+}
+
+function responseExamples(parsed: UnknownRecord): BrunoResponseExample[] {
   if (!Array.isArray(parsed.examples)) {
     return [];
   }
@@ -152,13 +160,14 @@ export function parseBruEndpoint(
     return null;
   }
 
-  const parsed = record(parseRequestWithoutStdout(content));
+  const parsed = record(parseRequestQuietly(content));
   const type = string(parsed.type) as BrunoRequestType;
   if (!REQUEST_TYPES.has(type)) {
     return null;
   }
 
   const request = record(parsed.request);
+  const examples = responseExamples(parsed);
   const url = string(request.url).trim();
   const name = string(parsed.name).trim();
   if (!name || !url) {
@@ -191,7 +200,9 @@ export function parseBruEndpoint(
     assertionCount: Array.isArray(request.assertions)
       ? request.assertions.length
       : 0,
-    exampleCount: Array.isArray(parsed.examples) ? parsed.examples.length : 0,
+    exampleCount: examples.length,
+    responseExamples: examples,
+    sourceHash: createHash("sha256").update(content).digest("hex"),
   };
 
   return {

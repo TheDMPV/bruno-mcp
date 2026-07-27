@@ -34,7 +34,21 @@ describe("Bruno MCP stdio server", () => {
         expect(tools.tools.map((tool) => tool.name)).toContain(
           "get_endpoint_examples",
         );
-        expect(tools.tools).toHaveLength(6);
+        expect(tools.tools.map((tool) => tool.name)).toContain("list_folders");
+        expect(tools.tools).toHaveLength(7);
+
+        const endpointResponse = await client.callTool({
+          name: "get_endpoint",
+          arguments: {
+            method: "GET",
+            path: "/users/:id",
+            include_examples: true,
+          },
+        });
+        const endpointResult = endpointResponse.structuredContent as {
+          endpoint: { responseExamples: unknown[] };
+        };
+        expect(endpointResult.endpoint.responseExamples).toHaveLength(1);
 
         const response = await client.callTool({
           name: "get_endpoint_examples",

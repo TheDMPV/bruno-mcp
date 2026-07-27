@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as z from "zod/v4";
@@ -10,7 +7,6 @@ import {
   getEndpoint,
   searchIndex,
 } from "./indexer.js";
-import { parseBruResponseExamples } from "./parser.js";
 import type { BrunoEndpoint } from "./types.js";
 import { packageVersion } from "./version.js";
 import { watchBrunoCollection } from "./watcher.js";
@@ -37,16 +33,27 @@ function endpointSummary(endpoint: BrunoEndpoint): Record<string, unknown> {
   };
 }
 
+function endpointContract(
+  endpoint: BrunoEndpoint,
+  includeExamples: boolean,
+): Record<string, unknown> {
+  const { responseExamples, ...contract } = endpoint;
+  return includeExamples ? { ...contract, responseExamples } : contract;
+}
+
 export interface CreateServerOptions {
   watch?: boolean;
+  indexPath?: string | undefined;
 }
 
 export async function createBrunoMcpServer(
   collectionPath: string,
   options: CreateServerOptions = {},
 ): Promise<{ server: McpServer; close: () => Promise<void> }> {
-  const store = new BrunoIndexStore(collectionPath);
-  await store.rebuild();
+  const store = new BrunoIndexStore(collectionPath, {
+    indexPath: options.indexPath,
+  });
+  await store.initialize();
 
   const server = new McpServer({
     name: "bruno-mcp",
@@ -69,6 +76,21 @@ export async function createBrunoMcpServer(
   );
 
   server.registerTool(
+    "list_folders",
+    {
+      title: "List Bruno collection folders",
+      description:
+        "Returns the collection folder hierarchy with direct and descendant endpoint counts.",
+      inputSchema: {},
+    },
+    () =>
+      result({
+        count: store.current.folders.length,
+        folders: store.current.folders,
+      }),
+  );
+
+  server.registerTool(
     "list_endpoints",
     {
       title: "List Bruno endpoints",
@@ -85,6 +107,7 @@ export async function createBrunoMcpServer(
           ])
           .optional(),
         folder: z.string().optional(),
+        pathPrefix: z.string().optional(),
         tags: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(100).default(50),
       },
@@ -116,6 +139,7 @@ export async function createBrunoMcpServer(
           ])
           .optional(),
         folder: z.string().optional(),
+        pathPrefix: z.string().optional(),
         tags: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(100).default(20),
       },
@@ -139,6 +163,7 @@ export async function createBrunoMcpServer(
         id: z.string().optional(),
         method: z.string().optional(),
         path: z.string().optional(),
+        include_examples: z.boolean().default(false),
       },
     },
     (input) => {
@@ -163,7 +188,9 @@ export async function createBrunoMcpServer(
           ],
         };
       }
-      return result({ endpoint });
+      return result({
+        endpoint: endpointContract(endpoint, input.include_examples),
+      });
     },
   );
 
@@ -179,7 +206,7 @@ export async function createBrunoMcpServer(
         path: z.string().optional(),
       },
     },
-    async (input) => {
+    (input) => {
       if (!input.id && !input.path) {
         return {
           isError: true,
@@ -202,43 +229,11 @@ export async function createBrunoMcpServer(
         };
       }
 
-      const collectionRoot = path.resolve(store.collectionPath);
-      const sourceFile = path.resolve(collectionRoot, endpoint.file);
-      const relativeSource = path.relative(collectionRoot, sourceFile);
-      if (
-        relativeSource.startsWith("..") ||
-        path.isAbsolute(relativeSource)
-      ) {
-        return {
-          isError: true,
-          content: [
-            { type: "text" as const, text: "Invalid endpoint source path." },
-          ],
-        };
-      }
-
-      try {
-        const examples = parseBruResponseExamples(
-          await readFile(sourceFile, "utf8"),
-        );
-        return result({
-          endpoint: endpointSummary(endpoint),
-          exampleCount: examples.length,
-          examples,
-        });
-      } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `Unable to read endpoint examples: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-        };
-      }
+      return result({
+        endpoint: endpointSummary(endpoint),
+        exampleCount: endpoint.responseExamples.length,
+        examples: endpoint.responseExamples,
+      });
     },
   );
 
@@ -254,7 +249,11 @@ export async function createBrunoMcpServer(
       result({
         schemaVersion: store.current.schemaVersion,
         generatedAt: store.current.generatedAt,
+        generator: store.current.generator,
+        source: store.source,
+        indexPath: store.indexPath,
         collection: store.current.collection,
+        folderCount: store.current.folders.length,
         warnings: store.current.warnings,
       }),
   );

@@ -29,6 +29,19 @@ export interface BrunoResponseExample {
   };
 }
 
+export interface BrunoSourceFile {
+  file: string;
+  hash: string;
+}
+
+export interface BrunoFolder {
+  path: string;
+  name: string;
+  parent: string;
+  endpointCount: number;
+  directEndpointCount: number;
+}
+
 export interface BrunoEndpoint {
   id: string;
   name: string;
@@ -48,6 +61,9 @@ export interface BrunoEndpoint {
   hasTests: boolean;
   assertionCount: number;
   exampleCount: number;
+  responseExamples: BrunoResponseExample[];
+  sourceHash: string;
+  metadata?: Record<string, string>;
   contractHash: string;
 }
 
@@ -57,12 +73,19 @@ export interface IndexWarning {
 }
 
 export interface BrunoIndex {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
+  generator: {
+    name: "@dmpv/bruno-mcp";
+    version: string;
+  };
   collection: {
     name: string;
     endpointCount: number;
+    sourceFingerprint: string;
   };
+  sources: BrunoSourceFile[];
+  folders: BrunoFolder[];
   endpoints: BrunoEndpoint[];
   warnings: IndexWarning[];
 }
@@ -72,6 +95,7 @@ export interface SearchOptions {
   method?: string | undefined;
   type?: BrunoRequestType | undefined;
   folder?: string | undefined;
+  pathPrefix?: string | undefined;
   tags?: string[] | undefined;
   limit?: number | undefined;
 }

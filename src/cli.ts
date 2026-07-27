@@ -21,9 +21,21 @@ program
   .description("Start the read-only MCP server over stdio.")
   .argument("[collection]", "Bruno collection directory", ".")
   .option("--no-watch", "Disable automatic reindexing")
-  .action(async (collection: string, options: { watch: boolean }) => {
-    await runStdioServer(path.resolve(collection), { watch: options.watch });
-  });
+  .option(
+    "--index <file>",
+    "Persistent index to load when it matches the collection",
+  )
+  .action(
+    async (
+      collection: string,
+      options: { watch: boolean; index?: string | undefined },
+    ) => {
+      await runStdioServer(path.resolve(collection), {
+        watch: options.watch,
+        indexPath: options.index ? path.resolve(options.index) : undefined,
+      });
+    },
+  );
 
 program
   .command("index")
