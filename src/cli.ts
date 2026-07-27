@@ -9,11 +9,12 @@ import {
   writeBrunoIndex,
 } from "./indexer.js";
 import { runStdioServer } from "./server.js";
+import { packageVersion } from "./version.js";
 
 const program = new Command()
   .name("bruno-mcp")
   .description("Index Bruno collections and expose them through MCP.")
-  .version("0.1.0");
+  .version(packageVersion);
 
 program
   .command("serve", { isDefault: true })

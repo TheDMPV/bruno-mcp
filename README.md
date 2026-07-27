@@ -62,7 +62,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.1.0",
+        "@dmpv/bruno-mcp@0.1.1",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
