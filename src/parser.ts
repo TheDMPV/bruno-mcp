@@ -94,6 +94,19 @@ function contractHash(endpoint: Omit<BrunoEndpoint, "contractHash">): string {
     .digest("hex");
 }
 
+function parseRequestWithoutStdout(content: string): unknown {
+  const originalLog = console.log;
+
+  try {
+    // Bruno logs grammar failures with console.log before throwing. MCP reserves
+    // stdout for protocol messages, so those diagnostics must not reach it.
+    console.log = () => undefined;
+    return parseRequest(content, { format: "bru" });
+  } finally {
+    console.log = originalLog;
+  }
+}
+
 export function parseBruEndpoint(
   content: string,
   absoluteFile: string,
@@ -103,7 +116,7 @@ export function parseBruEndpoint(
     return null;
   }
 
-  const parsed = record(parseRequest(content, { format: "bru" }));
+  const parsed = record(parseRequestWithoutStdout(content));
   const type = string(parsed.type) as BrunoRequestType;
   if (!REQUEST_TYPES.has(type)) {
     return null;

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   normalizeEndpointPath,
@@ -53,6 +53,30 @@ headers {
       headers: [{ name: "Authorization", enabled: true }],
     });
     expect(JSON.stringify(endpoint)).not.toContain("super-secret");
+  });
+
+  it("keeps Bruno parser failures off stdout and restores the logger", () => {
+    const root = path.resolve("tests/fixtures/sample-collection");
+    const file = path.join(root, "broken.bru");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      expect(() =>
+        parseBruEndpoint(
+          `meta {
+  name: Broken request
+  type: http
+  seq: 1
+`,
+          file,
+          root,
+        ),
+      ).toThrow();
+      expect(log).not.toHaveBeenCalled();
+      expect(console.log).toBe(log);
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 
