@@ -4,10 +4,10 @@ A read-only Model Context Protocol server and indexer for
 [Bruno](https://www.usebruno.com/) API collections.
 
 Bruno MCP discovers `.bru` request files, parses them with Bruno's official
-filestore package, builds a sanitized in-memory index, and gives MCP clients
+filestore package, builds a sanitized AI-oriented index, and gives MCP clients
 deterministic tools for endpoint discovery. It never sends API requests.
 
-> Status: early `0.1.x` release. The index schema may evolve before `1.0`.
+> Status: early `0.x` release. The index schema may evolve before `1.0`.
 
 ## Features
 
@@ -16,7 +16,10 @@ deterministic tools for endpoint discovery. It never sends API requests.
 - HTTP, GraphQL, gRPC, and WebSocket request indexing
 - Sanitized contracts that omit header, parameter, and auth values
 - Text search across names, paths, docs, folders, files, and tags
-- Optional persistent JSON index for CI or other tools
+- Versioned persistent JSON index with source fingerprints
+- Automatic loading of fresh `docs/api-index.json` or `.bruno-mcp/api-index.json`
+- Folder hierarchy and path-prefix filtering
+- Complete saved response examples without extra source parsing
 - Automatic reindexing while the MCP server is running
 - A reusable TypeScript API
 
@@ -62,7 +65,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.2.0",
+        "@dmpv/bruno-mcp@0.3.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -79,6 +82,7 @@ package command with `node /absolute/path/to/bruno-mcp/dist/cli.js`.
 | Tool | Purpose |
 | --- | --- |
 | `list_collections` | Describe the active collection |
+| `list_folders` | List the folder hierarchy and endpoint counts |
 | `list_endpoints` | Filter endpoint summaries |
 | `search_endpoints` | Rank endpoints by a text query |
 | `get_endpoint` | Get a sanitized contract by ID or method/path |
@@ -87,12 +91,13 @@ package command with `node /absolute/path/to/bruno-mcp/dist/cli.js`.
 
 `get_endpoint` includes method, URL, normalized path, auth mode, body content,
 field names, documentation, test/assertion presence, source file, and a stable
-contract hash. Secret-bearing auth, header, and parameter values are not
+contract hash. Pass `include_examples: true` to include saved response examples
+in the same call. Secret-bearing auth, header, and parameter values are not
 indexed.
 
-`get_endpoint_examples` reads examples from the endpoint source on demand. It
-returns the saved response status, content type, and complete body, while
-omitting the saved request and other response header values.
+`get_endpoint_examples` returns examples already stored in the index, including
+the saved response status, content type, and complete body, while omitting the
+saved request and other response header values.
 
 ## Index command
 
@@ -100,12 +105,19 @@ The generated JSON has a versioned top-level shape:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": "2026-07-27T00:00:00.000Z",
+  "generator": {
+    "name": "@dmpv/bruno-mcp",
+    "version": "0.3.0"
+  },
   "collection": {
     "name": "Example API",
-    "endpointCount": 2
+    "endpointCount": 2,
+    "sourceFingerprint": "..."
   },
+  "sources": [],
+  "folders": [],
   "endpoints": [],
   "warnings": []
 }
@@ -113,7 +125,11 @@ The generated JSON has a versioned top-level shape:
 
 The default output is `.bruno-mcp/api-index.json`, which is ignored by Git.
 Choose a tracked output path when the index is intended as a versioned build
-artifact.
+artifact. `serve` automatically checks `docs/api-index.json` and
+`.bruno-mcp/api-index.json`. It loads a persistent index only when its schema
+is supported and its source fingerprint matches the current `.bru` files;
+otherwise it safely rebuilds from source. Use `serve --index <file>` to select
+an explicit index.
 
 ## Library API
 
@@ -157,7 +173,7 @@ release can be created from the same tag after the package is available.
 
 ## Security and scope
 
-Bruno MCP is read-only. Version `0.1.x` does not execute requests, scripts,
+Bruno MCP is read-only. Version `0.x` does not execute requests, scripts,
 tests, or assertions. It only parses local files.
 
 Body content is included because it is part of an endpoint contract. Do not

@@ -60,6 +60,9 @@ headers {
     const root = path.resolve("tests/fixtures/sample-collection");
     const file = path.join(root, "broken.bru");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
     try {
       expect(() =>
@@ -74,9 +77,12 @@ headers {
         ),
       ).toThrow();
       expect(log).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
       expect(console.log).toBe(log);
+      expect(console.error).toBe(error);
     } finally {
       log.mockRestore();
+      error.mockRestore();
     }
   });
 });
