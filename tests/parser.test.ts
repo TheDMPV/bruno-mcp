@@ -85,6 +85,27 @@ headers {
       error.mockRestore();
     }
   });
+
+  it("produces stable hashes across LF and CRLF checkouts", () => {
+    const root = path.resolve("tests/fixtures/sample-collection");
+    const file = path.join(root, "line-endings.bru");
+    const content = `meta {
+  name: Stable hashes
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/stable
+  body: none
+  auth: none
+}`;
+    const lf = parseBruEndpoint(content, file, root);
+    const crlf = parseBruEndpoint(content.replace(/\n/g, "\r\n"), file, root);
+
+    expect(crlf?.sourceHash).toBe(lf?.sourceHash);
+    expect(crlf?.contractHash).toBe(lf?.contractHash);
+  });
 });
 
 describe("parseBruResponseExamples", () => {
