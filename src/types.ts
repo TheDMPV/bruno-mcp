@@ -15,6 +15,20 @@ export interface IndexedBody {
   content?: unknown;
 }
 
+export interface BrunoResponseExample {
+  name: string;
+  description: string;
+  response: {
+    status: number;
+    statusText: string;
+    contentType: string;
+    body: {
+      type: string;
+      content: unknown;
+    };
+  };
+}
+
 export interface BrunoEndpoint {
   id: string;
   name: string;

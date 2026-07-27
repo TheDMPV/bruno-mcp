@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as z from "zod/v4";
@@ -7,6 +10,7 @@ import {
   getEndpoint,
   searchIndex,
 } from "./indexer.js";
+import { parseBruResponseExamples } from "./parser.js";
 import type { BrunoEndpoint } from "./types.js";
 import { packageVersion } from "./version.js";
 import { watchBrunoCollection } from "./watcher.js";
@@ -160,6 +164,81 @@ export async function createBrunoMcpServer(
         };
       }
       return result({ endpoint });
+    },
+  );
+
+  server.registerTool(
+    "get_endpoint_examples",
+    {
+      title: "Get Bruno endpoint response examples",
+      description:
+        "Returns saved response examples for an endpoint, including status, content type, and the complete response body.",
+      inputSchema: {
+        id: z.string().optional(),
+        method: z.string().optional(),
+        path: z.string().optional(),
+      },
+    },
+    async (input) => {
+      if (!input.id && !input.path) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: "Provide id, or provide path with an optional method.",
+            },
+          ],
+        };
+      }
+
+      const endpoint = getEndpoint(store.current, input);
+      if (!endpoint) {
+        return {
+          isError: true,
+          content: [
+            { type: "text" as const, text: "Endpoint not found." },
+          ],
+        };
+      }
+
+      const collectionRoot = path.resolve(store.collectionPath);
+      const sourceFile = path.resolve(collectionRoot, endpoint.file);
+      const relativeSource = path.relative(collectionRoot, sourceFile);
+      if (
+        relativeSource.startsWith("..") ||
+        path.isAbsolute(relativeSource)
+      ) {
+        return {
+          isError: true,
+          content: [
+            { type: "text" as const, text: "Invalid endpoint source path." },
+          ],
+        };
+      }
+
+      try {
+        const examples = parseBruResponseExamples(
+          await readFile(sourceFile, "utf8"),
+        );
+        return result({
+          endpoint: endpointSummary(endpoint),
+          exampleCount: examples.length,
+          examples,
+        });
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: `Unable to read endpoint examples: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+        };
+      }
     },
   );
 

@@ -37,3 +37,35 @@ assert {
 docs {
   Fetches one user and their optional profile.
 }
+
+example {
+  name: user found 200
+  description: A saved user response.
+
+  request: {
+    url: {{baseUrl}}/users/123
+    method: GET
+    mode: none
+  }
+
+  response: {
+    headers: {
+      content-type: application/json
+    }
+
+    status: {
+      code: 200
+      text: OK
+    }
+
+    body: {
+      type: json
+      content: '''
+        {
+          "id": 123,
+          "name": "Ada"
+        }
+      '''
+    }
+  }
+}

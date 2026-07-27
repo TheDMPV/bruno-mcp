@@ -62,7 +62,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.1.2",
+        "@dmpv/bruno-mcp@0.2.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -82,12 +82,17 @@ package command with `node /absolute/path/to/bruno-mcp/dist/cli.js`.
 | `list_endpoints` | Filter endpoint summaries |
 | `search_endpoints` | Rank endpoints by a text query |
 | `get_endpoint` | Get a sanitized contract by ID or method/path |
+| `get_endpoint_examples` | Get saved response examples and complete bodies |
 | `get_index_status` | Check generation time and parser warnings |
 
 `get_endpoint` includes method, URL, normalized path, auth mode, body content,
 field names, documentation, test/assertion presence, source file, and a stable
 contract hash. Secret-bearing auth, header, and parameter values are not
 indexed.
+
+`get_endpoint_examples` reads examples from the endpoint source on demand. It
+returns the saved response status, content type, and complete body, while
+omitting the saved request and other response header values.
 
 ## Index command
 
