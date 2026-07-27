@@ -144,10 +144,11 @@ npm package dry run.
 1. Confirm the npm account owns or has access to the `@thedmpv` scope.
 2. Add an npm automation token as the `NPM_TOKEN` repository secret.
 3. Update `package.json` to the release version and merge it.
-4. Publish a GitHub release with the matching tag, such as `v0.1.0`.
+4. Push a matching version tag, such as `v0.1.0`.
 
-The release workflow validates the package and publishes it with npm
-provenance. Publishing is intentionally not triggered by ordinary pushes.
+The tag workflow validates the package and publishes it with npm provenance.
+Publishing is intentionally not triggered by ordinary branch pushes. A GitHub
+release can be created from the same tag after the package is available.
 
 ## Security and scope
 
