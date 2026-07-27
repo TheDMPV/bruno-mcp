@@ -8,6 +8,7 @@ import {
   searchIndex,
 } from "./indexer.js";
 import type { BrunoEndpoint } from "./types.js";
+import { packageVersion } from "./version.js";
 import { watchBrunoCollection } from "./watcher.js";
 
 function result(value: Record<string, unknown>) {
@@ -45,7 +46,7 @@ export async function createBrunoMcpServer(
 
   const server = new McpServer({
     name: "bruno-mcp",
-    version: "0.1.0",
+    version: packageVersion,
   });
 
   server.registerTool(
