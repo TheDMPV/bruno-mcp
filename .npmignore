@@ -1,0 +1,6 @@
+tests/
+src/
+.github/
+eslint.config.js
+tsconfig.json
+
