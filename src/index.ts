@@ -10,8 +10,11 @@ export {
 } from "./indexer.js";
 export {
   normalizeEndpointPath,
+  parseBrunoEndpoint,
   parseBruEndpoint,
   parseBruResponseExamples,
+  parseOpenCollectionEndpoint,
+  parseOpenCollectionResponseExamples,
 } from "./parser.js";
 export { createBrunoMcpServer, runStdioServer } from "./server.js";
 export type {
@@ -22,6 +25,7 @@ export type {
   BrunoRequestType,
   BrunoResponseExample,
   BrunoSourceFile,
+  BrunoSourceFormat,
   IndexWarning,
   SearchOptions,
   SearchMatchField,

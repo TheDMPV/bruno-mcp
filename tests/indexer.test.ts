@@ -16,6 +16,8 @@ import {
 } from "../src/indexer.js";
 
 const fixture = path.resolve("tests/fixtures/sample-collection");
+const yamlFixture = path.resolve("tests/fixtures/sample-yaml-collection");
+const mixedFixture = path.resolve("tests/fixtures/sample-mixed-collection");
 
 describe("buildBrunoIndex", () => {
   it("discovers request files and ignores environment files", async () => {
@@ -27,13 +29,14 @@ describe("buildBrunoIndex", () => {
       name: "Sample API",
       endpointCount: 2,
     });
-    expect(index.schemaVersion).toBe(3);
+    expect(index.schemaVersion).toBe(4);
     expect(index.generator).toEqual({
       name: "@dmpv/bruno-mcp",
-      version: "0.4.0",
+      version: "0.5.0",
     });
+    expect(index.collection.formats).toEqual(["bru"]);
     expect(index.collection.sourceFingerprint).toHaveLength(64);
-    expect(index.sources).toHaveLength(3);
+    expect(index.sources).toHaveLength(4);
     expect(index.folders).toContainEqual({
       path: "users",
       name: "users",
@@ -48,6 +51,7 @@ describe("buildBrunoIndex", () => {
       "POST",
     ]);
     expect(index.endpoints[0]?.tags).toEqual(["users", "smoke"]);
+    expect(index.endpoints[0]?.sourceFormat).toBe("bru");
     expect(index.endpoints[0]?.derivedTags).toEqual([
       "users",
       "get",
@@ -55,6 +59,56 @@ describe("buildBrunoIndex", () => {
     ]);
     expect(index.endpoints[0]?.sourceHash).toHaveLength(64);
     expect(index.endpoints[0]?.responseExamples).toHaveLength(1);
+  });
+
+  it("indexes OpenCollection YAML with docs, tests, and examples", async () => {
+    const index = await buildBrunoIndex(yamlFixture);
+
+    expect(index.collection).toMatchObject({
+      name: "Sample YAML API",
+      endpointCount: 1,
+      formats: ["opencollection-yaml"],
+    });
+    expect(index.sources).toHaveLength(5);
+    expect(index.sources.map((source) => source.file)).not.toContain(
+      "ignored/ignored.yml",
+    );
+    expect(index.warnings).toEqual([]);
+    expect(index.endpoints[0]).toMatchObject({
+      name: "Get YAML user",
+      method: "GET",
+      path: "/yaml-users/:id",
+      sourceFormat: "opencollection-yaml",
+      tags: ["users", "yaml"],
+      auth: "bearer",
+      hasTests: true,
+      assertionCount: 1,
+      exampleCount: 1,
+    });
+    expect(index.endpoints[0]?.responseExamples[0]).toMatchObject({
+      name: "yaml user found 200",
+      response: {
+        status: 200,
+        contentType: "application/json",
+        body: { type: "json" },
+      },
+    });
+    expect(JSON.stringify(index.endpoints[0])).not.toContain("super-secret");
+    expect(JSON.stringify(index.endpoints[0])).not.toContain("not-exposed");
+  });
+
+  it("indexes BRU and OpenCollection YAML requests together", async () => {
+    const index = await buildBrunoIndex(mixedFixture);
+
+    expect(index.collection).toMatchObject({
+      name: "Sample Mixed API",
+      endpointCount: 2,
+      formats: ["bru", "opencollection-yaml"],
+    });
+    expect(index.endpoints.map((endpoint) => endpoint.sourceFormat)).toEqual([
+      "bru",
+      "opencollection-yaml",
+    ]);
   });
 
   it("writes, reads, and loads a fresh persistent index", async () => {

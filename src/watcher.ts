@@ -25,7 +25,14 @@ export function watchBrunoCollection(
   });
 
   watcher.on("all", (_event, changedPath) => {
-    if (!changedPath.endsWith(".bru") && !changedPath.endsWith("bruno.json")) {
+    const normalized = changedPath.toLowerCase();
+    if (
+      !normalized.endsWith(".bru") &&
+      !normalized.endsWith(".yml") &&
+      !normalized.endsWith(".yaml") &&
+      !normalized.endsWith("bruno.json") &&
+      !normalized.endsWith(".brunoignore")
+    ) {
       return;
     }
     if (timer) clearTimeout(timer);

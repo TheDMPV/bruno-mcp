@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -6,6 +7,8 @@ import {
   normalizeEndpointPath,
   parseBruEndpoint,
   parseBruResponseExamples,
+  parseOpenCollectionEndpoint,
+  parseOpenCollectionResponseExamples,
 } from "../src/parser.js";
 
 describe("normalizeEndpointPath", () => {
@@ -173,6 +176,34 @@ example {
         },
       },
     ]);
+    expect(JSON.stringify(examples)).not.toContain("not-exposed");
+  });
+});
+
+describe("OpenCollection YAML parsing", () => {
+  const root = path.resolve("tests/fixtures/sample-yaml-collection");
+  const file = path.join(root, "users", "get-user.yml");
+  const content = readFileSync(file, "utf8");
+
+  it("maps YAML requests into the same sanitized endpoint model", () => {
+    expect(parseOpenCollectionEndpoint(content, file, root)).toMatchObject({
+      name: "Get YAML user",
+      method: "GET",
+      path: "/yaml-users/:id",
+      sourceFormat: "opencollection-yaml",
+      hasTests: true,
+      assertionCount: 1,
+      responseExamples: [{ name: "yaml user found 200" }],
+    });
+  });
+
+  it("returns complete YAML response examples without saved request data", () => {
+    const examples = parseOpenCollectionResponseExamples(content);
+    expect(examples).toHaveLength(1);
+    expect(JSON.parse(String(examples[0]?.response.body.content))).toEqual({
+      id: 123,
+      name: "YAML Ada",
+    });
     expect(JSON.stringify(examples)).not.toContain("not-exposed");
   });
 });

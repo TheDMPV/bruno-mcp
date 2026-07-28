@@ -3,15 +3,17 @@
 A read-only Model Context Protocol server and indexer for
 [Bruno](https://www.usebruno.com/) API collections.
 
-Bruno MCP discovers `.bru` request files, parses them with Bruno's official
-filestore package, builds a sanitized AI-oriented index, and gives MCP clients
-deterministic tools for endpoint discovery. It never sends API requests.
+Bruno MCP discovers classic `.bru` and OpenCollection YAML (`.yml`/`.yaml`)
+request files, parses them with Bruno's official filestore package, builds a
+sanitized AI-oriented index, and gives MCP clients deterministic tools for
+endpoint discovery. It never sends API requests.
 
 > Status: early `0.x` release. The index schema may evolve before `1.0`.
 
 ## Features
 
-- Automatic recursive discovery of `.bru` requests
+- Automatic recursive discovery of `.bru` and OpenCollection YAML requests
+- Mixed-format collection support during gradual migrations
 - Official Bruno parser via `@usebruno/filestore`
 - HTTP, GraphQL, gRPC, and WebSocket request indexing
 - Sanitized contracts that omit header, parameter, and auth values
@@ -28,8 +30,8 @@ deterministic tools for endpoint discovery. It never sends API requests.
 ## Requirements
 
 - Node.js 20.11 or newer
-- A Bruno collection directory (a `bruno.json` file is recommended but not
-  required)
+- A Bruno collection directory with `bruno.json`, `opencollection.yml`, or
+  request files in either supported format
 
 ## Quick start
 
@@ -63,7 +65,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.4.0",
+        "@dmpv/bruno-mcp@0.5.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -115,16 +117,17 @@ The generated JSON has a versioned top-level shape:
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "generatedAt": "2026-07-27T00:00:00.000Z",
   "generator": {
     "name": "@dmpv/bruno-mcp",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "collection": {
     "name": "Example API",
     "endpointCount": 2,
-    "sourceFingerprint": "..."
+    "sourceFingerprint": "...",
+    "formats": ["bru", "opencollection-yaml"]
   },
   "sources": [],
   "folders": [],
@@ -137,9 +140,10 @@ The default output is `.bruno-mcp/api-index.json`, which is ignored by Git.
 Choose a tracked output path when the index is intended as a versioned build
 artifact. `serve` automatically checks `docs/api-index.json` and
 `.bruno-mcp/api-index.json`. It loads a persistent index only when its schema
-is supported and its source fingerprint matches the current `.bru` files;
-otherwise it safely rebuilds from source. Use `serve --index <file>` to select
-an explicit index.
+is supported and its source fingerprint matches the current Bruno source
+files; otherwise it safely rebuilds from source. Each endpoint exposes
+`sourceFormat` as either `bru` or `opencollection-yaml`. Use
+`serve --index <file>` to select an explicit index.
 
 ## Library API
 

@@ -1,0 +1,58 @@
+info:
+  name: Get YAML user
+  type: http
+  seq: 1
+  tags:
+    - users
+    - yaml
+
+http:
+  method: GET
+  url: "{{baseUrl}}/yaml-users/:id"
+  params:
+    - name: id
+      value: "123"
+      type: path
+  headers:
+    - name: Authorization
+      value: Bearer super-secret
+  auth:
+    type: bearer
+    token: super-secret
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("returns a user", function () {
+          expect(res.getStatus()).to.equal(200);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+examples:
+  - name: yaml user found 200
+    description: A saved OpenCollection response.
+    request:
+      url: "{{baseUrl}}/yaml-users/123"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: application/json
+        - name: set-cookie
+          value: session=not-exposed
+      body:
+        type: json
+        data: |-
+          {
+            "id": 123,
+            "name": "YAML Ada"
+          }
+
+docs: |-
+  Fetches one user from an OpenCollection YAML request.

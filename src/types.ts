@@ -4,6 +4,8 @@ export type BrunoRequestType =
   | "grpc-request"
   | "ws-request";
 
+export type BrunoSourceFormat = "bru" | "opencollection-yaml";
+
 export interface IndexedField {
   name: string;
   enabled: boolean;
@@ -50,6 +52,7 @@ export interface BrunoEndpoint {
   url: string;
   path: string;
   file: string;
+  sourceFormat: BrunoSourceFormat;
   folder: string;
   sequence: number;
   tags: string[];
@@ -74,7 +77,7 @@ export interface IndexWarning {
 }
 
 export interface BrunoIndex {
-  schemaVersion: 3;
+  schemaVersion: 4;
   generatedAt: string;
   generator: {
     name: "@dmpv/bruno-mcp";
@@ -84,6 +87,7 @@ export interface BrunoIndex {
     name: string;
     endpointCount: number;
     sourceFingerprint: string;
+    formats: BrunoSourceFormat[];
   };
   sources: BrunoSourceFile[];
   folders: BrunoFolder[];
