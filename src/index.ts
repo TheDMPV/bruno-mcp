@@ -5,6 +5,7 @@ export {
   isBrunoIndexFresh,
   readBrunoIndex,
   searchIndex,
+  searchIndexWithScores,
   writeBrunoIndex,
 } from "./indexer.js";
 export {
@@ -15,6 +16,7 @@ export {
 export { createBrunoMcpServer, runStdioServer } from "./server.js";
 export type {
   BrunoEndpoint,
+  EndpointSearchResult,
   BrunoFolder,
   BrunoIndex,
   BrunoRequestType,
@@ -22,5 +24,6 @@ export type {
   BrunoSourceFile,
   IndexWarning,
   SearchOptions,
+  SearchMatchField,
 } from "./types.js";
 

@@ -6,8 +6,13 @@ import {
   BrunoIndexStore,
   getEndpoint,
   searchIndex,
+  searchIndexWithScores,
 } from "./indexer.js";
-import type { BrunoEndpoint } from "./types.js";
+import type {
+  BrunoEndpoint,
+  BrunoFolder,
+  EndpointSearchResult,
+} from "./types.js";
 import { packageVersion } from "./version.js";
 import { watchBrunoCollection } from "./watcher.js";
 
@@ -27,9 +32,55 @@ function endpointSummary(endpoint: BrunoEndpoint): Record<string, unknown> {
     type: endpoint.type,
     folder: endpoint.folder,
     tags: endpoint.tags,
+    derivedTags: endpoint.derivedTags,
     auth: endpoint.auth,
     file: endpoint.file,
     contractHash: endpoint.contractHash,
+  };
+}
+
+function endpointSearchSummary(
+  match: EndpointSearchResult,
+): Record<string, unknown> {
+  return {
+    ...endpointSummary(match.endpoint),
+    score: match.score,
+    matchedFields: match.matchedFields,
+  };
+}
+
+function folderDepth(folderPath: string): number {
+  return folderPath.split("/").filter(Boolean).length;
+}
+
+function selectFolders(
+  folders: BrunoFolder[],
+  input: {
+    parent?: string | undefined;
+    depth?: number | undefined;
+    offset: number;
+    limit: number;
+  },
+) {
+  const parent = input.parent?.replace(/^\/+|\/+$/g, "") ?? "";
+  const parentPrefix = parent ? `${parent}/` : "";
+  const baseDepth = folderDepth(parent);
+  const filtered = folders.filter((folder) => {
+    if (parent && !folder.path.startsWith(parentPrefix)) return false;
+    const relativeDepth = folderDepth(folder.path) - baseDepth;
+    return input.depth === undefined || relativeDepth <= input.depth;
+  });
+
+  return {
+    total: filtered.length,
+    count: Math.max(
+      Math.min(input.limit, filtered.length - input.offset),
+      0,
+    ),
+    offset: input.offset,
+    limit: input.limit,
+    hasMore: input.offset + input.limit < filtered.length,
+    folders: filtered.slice(input.offset, input.offset + input.limit),
   };
 }
 
@@ -80,14 +131,15 @@ export async function createBrunoMcpServer(
     {
       title: "List Bruno collection folders",
       description:
-        "Returns the collection folder hierarchy with direct and descendant endpoint counts.",
-      inputSchema: {},
+        "Returns a paginated collection folder hierarchy. Use parent and depth to explore a subtree without loading the complete hierarchy.",
+      inputSchema: {
+        parent: z.string().optional(),
+        depth: z.number().int().min(1).max(20).optional(),
+        offset: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(100).default(50),
+      },
     },
-    () =>
-      result({
-        count: store.current.folders.length,
-        folders: store.current.folders,
-      }),
+    (input) => result(selectFolders(store.current.folders, input)),
   );
 
   server.registerTool(
@@ -126,7 +178,7 @@ export async function createBrunoMcpServer(
     {
       title: "Search Bruno endpoints",
       description:
-        "Searches names, URLs, paths, docs, folders, files, and tags. Results are deterministic and ranked by textual relevance.",
+        "Searches endpoints with field-aware ranking. Returns score and matchedFields for every result; docs-only matches are excluded by default.",
       inputSchema: {
         query: z.string().min(1),
         method: z.string().optional(),
@@ -141,14 +193,18 @@ export async function createBrunoMcpServer(
         folder: z.string().optional(),
         pathPrefix: z.string().optional(),
         tags: z.array(z.string()).optional(),
+        search_mode: z.enum(["all", "contract", "docs"]).default("all"),
         limit: z.number().int().min(1).max(100).default(20),
       },
     },
     (input) => {
-      const endpoints = searchIndex(store.current, input);
+      const matches = searchIndexWithScores(store.current, {
+        ...input,
+        searchMode: input.search_mode,
+      });
       return result({
-        count: endpoints.length,
-        endpoints: endpoints.map(endpointSummary),
+        count: matches.length,
+        endpoints: matches.map(endpointSearchSummary),
       });
     },
   );
@@ -195,11 +251,45 @@ export async function createBrunoMcpServer(
   );
 
   server.registerTool(
+    "get_endpoints",
+    {
+      title: "Get multiple Bruno endpoints",
+      description:
+        "Returns up to 25 complete sanitized endpoint contracts by stable ID in one call. Use include_examples only when complete saved responses are required.",
+      inputSchema: {
+        ids: z.array(z.string().min(1)).min(1).max(25),
+        include_examples: z.boolean().default(false),
+      },
+    },
+    (input) => {
+      const uniqueIds = [...new Set(input.ids)];
+      const endpoints: Record<string, unknown>[] = [];
+      const missingIds: string[] = [];
+
+      for (const id of uniqueIds) {
+        const endpoint = getEndpoint(store.current, { id });
+        if (endpoint) {
+          endpoints.push(endpointContract(endpoint, input.include_examples));
+        } else {
+          missingIds.push(id);
+        }
+      }
+
+      return result({
+        requestedCount: uniqueIds.length,
+        count: endpoints.length,
+        missingIds,
+        endpoints,
+      });
+    },
+  );
+
+  server.registerTool(
     "get_endpoint_examples",
     {
       title: "Get Bruno endpoint response examples",
       description:
-        "Returns saved response examples for an endpoint, including status, content type, and the complete response body.",
+        "Lean examples-only alternative to get_endpoint(include_examples: true). Returns saved status, content type, and complete response bodies without the full contract.",
       inputSchema: {
         id: z.string().optional(),
         method: z.string().optional(),
