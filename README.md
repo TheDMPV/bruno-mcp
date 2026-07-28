@@ -52,10 +52,6 @@ Inspect a collection without writing files:
 npx -y @dmpv/bruno-mcp inspect ./path/to/collection
 ```
 
-The unscoped npm name `bruno-mcp` is owned by another publisher, so this
-project is distributed as `@dmpv/bruno-mcp`. Its executable is still named
-`bruno-mcp`.
-
 ## MCP client configuration
 
 Example configuration for clients that support local stdio servers:
@@ -171,19 +167,7 @@ npm run check
 npm run dev -- serve ./tests/fixtures/sample-collection
 ```
 
-`npm run check` runs type checking, linting, tests, a production build, and an
-npm package dry run.
-
-## Publishing
-
-1. Confirm the npm account owns or has access to the `@dmpv` scope.
-2. Add an npm automation token as the `NPM_TOKEN` repository secret.
-3. Update `package.json` to the release version and merge it.
-4. Push a matching version tag, such as `v0.1.0`.
-
-The tag workflow validates the package and publishes it with npm provenance.
-Publishing is intentionally not triggered by ordinary branch pushes. A GitHub
-release can be created from the same tag after the package is available.
+`npm run check` runs the project's automated validation suite.
 
 ## Security and scope
 
