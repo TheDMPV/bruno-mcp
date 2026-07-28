@@ -8,6 +8,7 @@ import type {
   BrunoEndpoint,
   BrunoRequestType,
   BrunoResponseExample,
+  BrunoSourceFormat,
   IndexedBody,
   IndexedField,
 } from "./types.js";
@@ -96,7 +97,10 @@ function contractHash(endpoint: Omit<BrunoEndpoint, "contractHash">): string {
     .digest("hex");
 }
 
-function parseRequestQuietly(content: string): unknown {
+function parseRequestQuietly(
+  content: string,
+  sourceFormat: BrunoSourceFormat,
+): unknown {
   const originalLog = console.log;
   const originalError = console.error;
 
@@ -106,7 +110,9 @@ function parseRequestQuietly(content: string): unknown {
     // structured warnings instead of emitting parser internals.
     console.log = () => undefined;
     console.error = () => undefined;
-    return parseRequest(content, { format: "bru" });
+    return parseRequest(content, {
+      format: sourceFormat === "bru" ? "bru" : "yml",
+    });
   } finally {
     console.log = originalLog;
     console.error = originalError;
@@ -151,7 +157,14 @@ function derivedTags(
 export function parseBruResponseExamples(
   content: string,
 ): BrunoResponseExample[] {
-  const parsed = record(parseRequestQuietly(content));
+  const parsed = record(parseRequestQuietly(content, "bru"));
+  return responseExamples(parsed);
+}
+
+export function parseOpenCollectionResponseExamples(
+  content: string,
+): BrunoResponseExample[] {
+  const parsed = record(parseRequestQuietly(content, "opencollection-yaml"));
   return responseExamples(parsed);
 }
 
@@ -187,16 +200,17 @@ function responseExamples(parsed: UnknownRecord): BrunoResponseExample[] {
   });
 }
 
-export function parseBruEndpoint(
+export function parseBrunoEndpoint(
   content: string,
   absoluteFile: string,
   collectionRoot: string,
+  sourceFormat: BrunoSourceFormat,
 ): BrunoEndpoint | null {
-  if (!/\bmeta\s*\{/.test(content)) {
+  if (sourceFormat === "bru" && !/\bmeta\s*\{/.test(content)) {
     return null;
   }
 
-  const parsed = record(parseRequestQuietly(content));
+  const parsed = record(parseRequestQuietly(content, sourceFormat));
   const type = string(parsed.type) as BrunoRequestType;
   if (!REQUEST_TYPES.has(type)) {
     return null;
@@ -224,6 +238,7 @@ export function parseBruEndpoint(
     url,
     path: normalizeEndpointPath(url),
     file: relativeFile,
+    sourceFormat,
     folder: folder === "." ? "" : folder,
     sequence: number(parsed.seq, 1),
     tags: strings(parsed.tags),
@@ -246,5 +261,26 @@ export function parseBruEndpoint(
     ...endpointWithoutHash,
     contractHash: contractHash(endpointWithoutHash),
   };
+}
+
+export function parseBruEndpoint(
+  content: string,
+  absoluteFile: string,
+  collectionRoot: string,
+): BrunoEndpoint | null {
+  return parseBrunoEndpoint(content, absoluteFile, collectionRoot, "bru");
+}
+
+export function parseOpenCollectionEndpoint(
+  content: string,
+  absoluteFile: string,
+  collectionRoot: string,
+): BrunoEndpoint | null {
+  return parseBrunoEndpoint(
+    content,
+    absoluteFile,
+    collectionRoot,
+    "opencollection-yaml",
+  );
 }
 

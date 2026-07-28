@@ -8,8 +8,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { discoverBruFiles, readCollectionName } from "./discovery.js";
-import { parseBruEndpoint } from "./parser.js";
+import { discoverBrunoSources, readCollectionName } from "./discovery.js";
+import { parseBrunoEndpoint } from "./parser.js";
 import { sourceHash } from "./source-hash.js";
 import type {
   BrunoEndpoint,
@@ -27,12 +27,12 @@ export interface BuildIndexOptions {
 }
 
 async function sourceManifest(root: string): Promise<BrunoSourceFile[]> {
-  const files = await discoverBruFiles(root);
+  const files = await discoverBrunoSources(root);
   return Promise.all(
     files.map(async (file) => {
-      const content = await readFile(file, "utf8");
+      const content = await readFile(file.absolutePath, "utf8");
       return {
-        file: path.relative(root, file).split(path.sep).join("/"),
+        file: file.relativePath,
         hash: sourceHash(content),
       };
     }),
@@ -81,20 +81,26 @@ export async function buildBrunoIndex(
   options: BuildIndexOptions = {},
 ): Promise<BrunoIndex> {
   const root = path.resolve(collectionPath);
-  const files = await discoverBruFiles(root);
+  const files = await discoverBrunoSources(root);
   const endpoints: BrunoEndpoint[] = [];
   const warnings: BrunoIndex["warnings"] = [];
   const sources: BrunoSourceFile[] = [];
 
   for (const file of files) {
-    const relativeFile = path.relative(root, file).split(path.sep).join("/");
+    const relativeFile = file.relativePath;
     try {
-      const content = await readFile(file, "utf8");
+      const content = await readFile(file.absolutePath, "utf8");
       sources.push({
         file: relativeFile,
         hash: sourceHash(content),
       });
-      const endpoint = parseBruEndpoint(content, file, root);
+      if (!file.isRequest || !file.sourceFormat) continue;
+      const endpoint = parseBrunoEndpoint(
+        content,
+        file.absolutePath,
+        root,
+        file.sourceFormat,
+      );
       if (endpoint) {
         endpoints.push(endpoint);
       }
@@ -114,7 +120,7 @@ export async function buildBrunoIndex(
   );
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedAt: (options.now?.() ?? new Date()).toISOString(),
     generator: {
       name: "@dmpv/bruno-mcp",
@@ -124,6 +130,13 @@ export async function buildBrunoIndex(
       name: await readCollectionName(root),
       endpointCount: endpoints.length,
       sourceFingerprint: sourceFingerprint(sources),
+      formats: [
+        ...new Set(
+          files.flatMap((file) =>
+            file.isRequest && file.sourceFormat ? [file.sourceFormat] : [],
+          ),
+        ),
+      ].sort(),
     },
     sources,
     folders: folders(endpoints),
@@ -139,12 +152,13 @@ function isBrunoIndex(value: unknown): value is BrunoIndex {
 
   const candidate = value as Partial<BrunoIndex>;
   return (
-    candidate.schemaVersion === 3 &&
+    candidate.schemaVersion === 4 &&
     candidate.generator?.name === "@dmpv/bruno-mcp" &&
     typeof candidate.generator.version === "string" &&
     typeof candidate.generatedAt === "string" &&
     typeof candidate.collection?.name === "string" &&
     typeof candidate.collection.sourceFingerprint === "string" &&
+    Array.isArray(candidate.collection.formats) &&
     Array.isArray(candidate.sources) &&
     Array.isArray(candidate.folders) &&
     Array.isArray(candidate.endpoints) &&

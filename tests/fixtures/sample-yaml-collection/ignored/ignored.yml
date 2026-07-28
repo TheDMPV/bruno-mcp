@@ -1,0 +1,8 @@
+info:
+  name: Ignored request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/ignored"

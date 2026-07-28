@@ -35,6 +35,7 @@ function endpointSummary(endpoint: BrunoEndpoint): Record<string, unknown> {
     derivedTags: endpoint.derivedTags,
     auth: endpoint.auth,
     file: endpoint.file,
+    sourceFormat: endpoint.sourceFormat,
     contractHash: endpoint.contractHash,
   };
 }
