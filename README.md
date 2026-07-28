@@ -15,10 +15,12 @@ deterministic tools for endpoint discovery. It never sends API requests.
 - Official Bruno parser via `@usebruno/filestore`
 - HTTP, GraphQL, gRPC, and WebSocket request indexing
 - Sanitized contracts that omit header, parameter, and auth values
-- Text search across names, paths, docs, folders, files, and tags
+- Explainable, field-aware search with scores and matched fields
+- Explicit and folder-derived tags
 - Versioned persistent JSON index with source fingerprints
 - Automatic loading of fresh `docs/api-index.json` or `.bruno-mcp/api-index.json`
-- Folder hierarchy and path-prefix filtering
+- Paginated folder hierarchy with subtree/depth filtering
+- Batch contract retrieval by stable endpoint IDs
 - Complete saved response examples without extra source parsing
 - Automatic reindexing while the MCP server is running
 - A reusable TypeScript API
@@ -65,7 +67,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.3.0",
+        "@dmpv/bruno-mcp@0.4.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -86,6 +88,7 @@ package command with `node /absolute/path/to/bruno-mcp/dist/cli.js`.
 | `list_endpoints` | Filter endpoint summaries |
 | `search_endpoints` | Rank endpoints by a text query |
 | `get_endpoint` | Get a sanitized contract by ID or method/path |
+| `get_endpoints` | Get up to 25 contracts by stable ID in one call |
 | `get_endpoint_examples` | Get saved response examples and complete bodies |
 | `get_index_status` | Check generation time and parser warnings |
 
@@ -99,17 +102,28 @@ indexed.
 the saved response status, content type, and complete body, while omitting the
 saved request and other response header values.
 
+`search_endpoints` returns a numeric `score` and `matchedFields` with every
+result. Its default `all` mode excludes matches found only in low-signal
+documentation text. Use `search_mode: "docs"` for an intentional documentation
+search, or `"contract"` to ignore docs entirely. Tag filters match both explicit
+Bruno tags and `derivedTags` generated from the endpoint folder, method, request
+type, and known current/legacy roots.
+
+`list_folders` accepts `parent`, `depth`, `offset`, and `limit`. `get_endpoints`
+accepts at most 25 stable IDs and reports missing IDs without failing the whole
+batch.
+
 ## Index command
 
 The generated JSON has a versioned top-level shape:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "generatedAt": "2026-07-27T00:00:00.000Z",
   "generator": {
     "name": "@dmpv/bruno-mcp",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "collection": {
     "name": "Example API",

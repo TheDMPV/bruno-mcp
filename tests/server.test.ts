@@ -34,8 +34,35 @@ describe("Bruno MCP stdio server", () => {
         expect(tools.tools.map((tool) => tool.name)).toContain(
           "get_endpoint_examples",
         );
+        expect(tools.tools.map((tool) => tool.name)).toContain("get_endpoints");
         expect(tools.tools.map((tool) => tool.name)).toContain("list_folders");
-        expect(tools.tools).toHaveLength(7);
+        expect(tools.tools).toHaveLength(8);
+
+        const foldersResponse = await client.callTool({
+          name: "list_folders",
+          arguments: { depth: 1, offset: 0, limit: 1 },
+        });
+        expect(foldersResponse.structuredContent).toMatchObject({
+          total: 1,
+          count: 1,
+          hasMore: false,
+          folders: [{ path: "users" }],
+        });
+
+        const searchResponse = await client.callTool({
+          name: "search_endpoints",
+          arguments: { query: "create user" },
+        });
+        const searchResult = searchResponse.structuredContent as {
+          endpoints: Array<{
+            id: string;
+            score: number;
+            matchedFields: string[];
+          }>;
+        };
+        expect(searchResult.endpoints[0]?.score).toBeGreaterThan(0);
+        expect(searchResult.endpoints[0]?.matchedFields).toContain("name");
+        expect(searchResult.endpoints[0]?.matchedFields).toContain("path");
 
         const endpointResponse = await client.callTool({
           name: "get_endpoint",
@@ -49,6 +76,39 @@ describe("Bruno MCP stdio server", () => {
           endpoint: { responseExamples: unknown[] };
         };
         expect(endpointResult.endpoint.responseExamples).toHaveLength(1);
+
+        const listResponse = await client.callTool({
+          name: "list_endpoints",
+          arguments: { limit: 10 },
+        });
+        const listed = listResponse.structuredContent as {
+          endpoints: Array<{ id: string }>;
+        };
+        const batchResponse = await client.callTool({
+          name: "get_endpoints",
+          arguments: {
+            ids: [
+              ...listed.endpoints.map((endpoint) => endpoint.id),
+              "endpoint:missing",
+            ],
+          },
+        });
+        const batchResult = batchResponse.structuredContent as {
+          requestedCount: number;
+          count: number;
+          missingIds: string[];
+          endpoints: Array<Record<string, unknown>>;
+        };
+        expect(batchResult).toMatchObject({
+          requestedCount: 3,
+          count: 2,
+          missingIds: ["endpoint:missing"],
+        });
+        expect(
+          batchResult.endpoints.every(
+            (endpoint) => !("responseExamples" in endpoint),
+          ),
+        ).toBe(true);
 
         const response = await client.callTool({
           name: "get_endpoint_examples",

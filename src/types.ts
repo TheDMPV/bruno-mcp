@@ -53,6 +53,7 @@ export interface BrunoEndpoint {
   folder: string;
   sequence: number;
   tags: string[];
+  derivedTags: string[];
   auth: string;
   headers: IndexedField[];
   params: IndexedField[];
@@ -73,7 +74,7 @@ export interface IndexWarning {
 }
 
 export interface BrunoIndex {
-  schemaVersion: 2;
+  schemaVersion: 3;
   generatedAt: string;
   generator: {
     name: "@dmpv/bruno-mcp";
@@ -97,5 +98,24 @@ export interface SearchOptions {
   folder?: string | undefined;
   pathPrefix?: string | undefined;
   tags?: string[] | undefined;
+  searchMode?: "all" | "contract" | "docs" | undefined;
   limit?: number | undefined;
+}
+
+export type SearchMatchField =
+  | "name"
+  | "path"
+  | "url"
+  | "method"
+  | "type"
+  | "folder"
+  | "file"
+  | "tags"
+  | "derivedTags"
+  | "docs";
+
+export interface EndpointSearchResult {
+  endpoint: BrunoEndpoint;
+  score: number;
+  matchedFields: SearchMatchField[];
 }

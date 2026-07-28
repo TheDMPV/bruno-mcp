@@ -11,6 +11,7 @@ import {
   isBrunoIndexFresh,
   readBrunoIndex,
   searchIndex,
+  searchIndexWithScores,
   writeBrunoIndex,
 } from "../src/indexer.js";
 
@@ -26,10 +27,10 @@ describe("buildBrunoIndex", () => {
       name: "Sample API",
       endpointCount: 2,
     });
-    expect(index.schemaVersion).toBe(2);
+    expect(index.schemaVersion).toBe(3);
     expect(index.generator).toEqual({
       name: "@dmpv/bruno-mcp",
-      version: "0.3.1",
+      version: "0.4.0",
     });
     expect(index.collection.sourceFingerprint).toHaveLength(64);
     expect(index.sources).toHaveLength(3);
@@ -47,6 +48,11 @@ describe("buildBrunoIndex", () => {
       "POST",
     ]);
     expect(index.endpoints[0]?.tags).toEqual(["users", "smoke"]);
+    expect(index.endpoints[0]?.derivedTags).toEqual([
+      "users",
+      "get",
+      "http",
+    ]);
     expect(index.endpoints[0]?.sourceHash).toHaveLength(64);
     expect(index.endpoints[0]?.responseExamples).toHaveLength(1);
   });
@@ -108,6 +114,46 @@ describe("index queries", () => {
     const index = await buildBrunoIndex(fixture);
     expect(
       searchIndex(index, { pathPrefix: "users/:id", limit: 100 }).map(
+        (endpoint) => endpoint.name,
+      ),
+    ).toEqual(["Get user"]);
+  });
+
+  it("explains ranked matches and excludes docs-only noise by default", async () => {
+    const index = await buildBrunoIndex(fixture);
+    const createMatches = searchIndexWithScores(index, {
+      query: "create user",
+    });
+
+    expect(createMatches[0]?.endpoint.name).toBe("Create user");
+    expect(createMatches[0]?.score).toBeGreaterThan(0);
+    expect(createMatches[0]?.matchedFields).toContain("name");
+    expect(createMatches[0]?.matchedFields).toContain("path");
+
+    const getUser = index.endpoints.find(
+      (endpoint) => endpoint.name === "Get user",
+    );
+    if (!getUser) throw new Error("Fixture endpoint not found.");
+    getUser.docs = `${getUser.docs} Internal login implementation detail.`;
+
+    expect(searchIndexWithScores(index, { query: "login" })).toEqual([]);
+    expect(
+      searchIndexWithScores(index, {
+        query: "login",
+        searchMode: "docs",
+      }),
+    ).toMatchObject([
+      {
+        endpoint: { name: "Get user" },
+        matchedFields: ["docs"],
+      },
+    ]);
+  });
+
+  it("filters by explicit or derived tags", async () => {
+    const index = await buildBrunoIndex(fixture);
+    expect(
+      searchIndex(index, { tags: ["get"], limit: 100 }).map(
         (endpoint) => endpoint.name,
       ),
     ).toEqual(["Get user"]);

@@ -113,6 +113,41 @@ function parseRequestQuietly(content: string): unknown {
   }
 }
 
+function tag(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/([a-z\d])([A-Z])/g, "$1-$2")
+    .replace(/[^a-zA-Z\d]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+function derivedTags(
+  folder: string,
+  method: string,
+  type: BrunoRequestType,
+): string[] {
+  const segments = folder.split("/").filter(Boolean);
+  const tags = new Set<string>();
+
+  if (segments[0] === "endpoints") {
+    tags.add("current");
+    segments.shift();
+  } else if (segments[0] === "endpoints-legacy") {
+    tags.add("legacy");
+    segments.shift();
+  }
+
+  for (const segment of segments) {
+    const value = tag(segment);
+    if (value) tags.add(value);
+  }
+  if (method) tags.add(method.toLowerCase());
+  tags.add(type.replace(/-request$/, ""));
+  return [...tags];
+}
+
 export function parseBruResponseExamples(
   content: string,
 ): BrunoResponseExample[] {
@@ -192,6 +227,7 @@ export function parseBruEndpoint(
     folder: folder === "." ? "" : folder,
     sequence: number(parsed.seq, 1),
     tags: strings(parsed.tags),
+    derivedTags: derivedTags(folder === "." ? "" : folder, method, type),
     auth: string(record(request.auth).mode, "none"),
     headers: fields(request.headers),
     params: fields(request.params),

@@ -16,6 +16,8 @@ import type {
   BrunoFolder,
   BrunoIndex,
   BrunoSourceFile,
+  EndpointSearchResult,
+  SearchMatchField,
   SearchOptions,
 } from "./types.js";
 import { packageVersion } from "./version.js";
@@ -112,7 +114,7 @@ export async function buildBrunoIndex(
   );
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: (options.now?.() ?? new Date()).toISOString(),
     generator: {
       name: "@dmpv/bruno-mcp",
@@ -137,7 +139,7 @@ function isBrunoIndex(value: unknown): value is BrunoIndex {
 
   const candidate = value as Partial<BrunoIndex>;
   return (
-    candidate.schemaVersion === 2 &&
+    candidate.schemaVersion === 3 &&
     candidate.generator?.name === "@dmpv/bruno-mcp" &&
     typeof candidate.generator.version === "string" &&
     typeof candidate.generatedAt === "string" &&
@@ -146,6 +148,9 @@ function isBrunoIndex(value: unknown): value is BrunoIndex {
     Array.isArray(candidate.sources) &&
     Array.isArray(candidate.folders) &&
     Array.isArray(candidate.endpoints) &&
+    candidate.endpoints.every((endpoint) =>
+      Array.isArray(endpoint.derivedTags),
+    ) &&
     Array.isArray(candidate.warnings)
   );
 }
@@ -194,42 +199,78 @@ function normalized(value: string): string {
     .trim();
 }
 
-function score(endpoint: BrunoEndpoint, query: string): number {
+const SEARCH_FIELDS: Array<{
+  field: SearchMatchField;
+  weight: number;
+  value: (endpoint: BrunoEndpoint) => string;
+}> = [
+  { field: "name", weight: 60, value: (endpoint) => endpoint.name },
+  { field: "path", weight: 55, value: (endpoint) => endpoint.path },
+  { field: "url", weight: 40, value: (endpoint) => endpoint.url },
+  { field: "tags", weight: 35, value: (endpoint) => endpoint.tags.join(" ") },
+  {
+    field: "derivedTags",
+    weight: 30,
+    value: (endpoint) => endpoint.derivedTags.join(" "),
+  },
+  { field: "folder", weight: 25, value: (endpoint) => endpoint.folder },
+  { field: "file", weight: 25, value: (endpoint) => endpoint.file },
+  { field: "method", weight: 15, value: (endpoint) => endpoint.method },
+  { field: "type", weight: 10, value: (endpoint) => endpoint.type },
+  { field: "docs", weight: 3, value: (endpoint) => endpoint.docs },
+];
+
+function score(
+  endpoint: BrunoEndpoint,
+  query: string,
+  searchMode: NonNullable<SearchOptions["searchMode"]>,
+): Omit<EndpointSearchResult, "endpoint"> {
   if (!query) {
-    return 1;
+    return { score: 1, matchedFields: [] };
   }
 
   const terms = normalized(query).split(/\s+/).filter(Boolean);
-  const name = normalized(endpoint.name);
-  const pathValue = normalized(endpoint.path);
-  const searchable = normalized(
-    [
-      endpoint.name,
-      endpoint.method,
-      endpoint.url,
-      endpoint.path,
-      endpoint.file,
-      endpoint.folder,
-      endpoint.docs,
-      ...endpoint.tags,
-    ].join(" "),
-  );
+  const fields = SEARCH_FIELDS.filter(({ field }) => {
+    if (searchMode === "docs") return field === "docs";
+    if (searchMode === "contract") return field !== "docs";
+    return true;
+  }).map((entry) => ({
+    ...entry,
+    normalizedValue: normalized(entry.value(endpoint)),
+  }));
+  const matchedFields = new Set<SearchMatchField>();
+  let total = 0;
+  let matchedEveryTerm = true;
 
-  return terms.reduce((total, term) => {
-    if (name === term || pathValue === term) {
-      return total + 25;
+  for (const term of terms) {
+    let matchedTerm = false;
+    for (const field of fields) {
+      if (!field.normalizedValue.includes(term)) continue;
+      matchedTerm = true;
+      matchedFields.add(field.field);
+      total += field.normalizedValue === term ? field.weight * 2 : field.weight;
     }
-    if (name.includes(term) || pathValue.includes(term)) {
-      return total + 12;
-    }
-    return searchable.includes(term) ? total + 4 : total;
-  }, 0);
+    if (!matchedTerm) matchedEveryTerm = false;
+  }
+
+  if (!matchedEveryTerm) {
+    return { score: 0, matchedFields: [] };
+  }
+  if (
+    searchMode === "all" &&
+    matchedFields.size === 1 &&
+    matchedFields.has("docs")
+  ) {
+    return { score: 0, matchedFields: [] };
+  }
+
+  return { score: total, matchedFields: [...matchedFields] };
 }
 
-export function searchIndex(
+export function searchIndexWithScores(
   index: BrunoIndex,
   options: SearchOptions = {},
-): BrunoEndpoint[] {
+): EndpointSearchResult[] {
   const query = normalized(options.query ?? "");
   const method = options.method?.toUpperCase();
   const folder = normalized(options.folder ?? "");
@@ -238,6 +279,7 @@ export function searchIndex(
     : "";
   const requiredTags = (options.tags ?? []).map(normalized);
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const searchMode = options.searchMode ?? "all";
 
   return index.endpoints
     .filter((endpoint) => {
@@ -245,23 +287,39 @@ export function searchIndex(
       if (options.type && endpoint.type !== options.type) return false;
       if (folder && !normalized(endpoint.folder).includes(folder)) return false;
       if (pathPrefix && !endpoint.path.startsWith(pathPrefix)) return false;
+      const availableTags = [...endpoint.tags, ...endpoint.derivedTags].map(
+        normalized,
+      );
       if (
         requiredTags.length > 0 &&
-        !requiredTags.every((tag) => endpoint.tags.map(normalized).includes(tag))
+        !requiredTags.every((requiredTag) =>
+          availableTags.includes(requiredTag),
+        )
       ) {
         return false;
       }
       return true;
     })
-    .map((endpoint) => ({ endpoint, score: score(endpoint, query) }))
+    .map((endpoint) => ({
+      endpoint,
+      ...score(endpoint, query, searchMode),
+    }))
     .filter((result) => !query || result.score > 0)
     .sort(
       (left, right) =>
         right.score - left.score ||
         left.endpoint.path.localeCompare(right.endpoint.path),
     )
-    .slice(0, limit)
-    .map((result) => result.endpoint);
+    .slice(0, limit);
+}
+
+export function searchIndex(
+  index: BrunoIndex,
+  options: SearchOptions = {},
+): BrunoEndpoint[] {
+  return searchIndexWithScores(index, options).map(
+    (result) => result.endpoint,
+  );
 }
 
 function normalizePathPrefix(value: string): string {
