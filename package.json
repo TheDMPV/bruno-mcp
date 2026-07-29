@@ -1,6 +1,6 @@
 {
   "name": "@dmpv/bruno-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Read-only MCP server and indexer for Bruno API collections.",
   "type": "module",
   "bin": {
@@ -58,7 +58,7 @@
   },
   "homepage": "https://github.com/TheDMPV/bruno-mcp#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@usebruno/filestore": "^0.11.0",
     "chokidar": "^5.0.0",
     "commander": "^15.0.0",
@@ -67,6 +67,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^24.10.1",
     "eslint": "^10.8.0",
     "tsx": "^4.21.0",

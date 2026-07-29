@@ -1,10 +1,25 @@
 import path from "node:path";
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { describe, expect, it } from "vitest";
 
 const fixture = path.resolve("tests/fixtures/sample-collection");
+
+function createTransport(): StdioClientTransport {
+  return new StdioClientTransport({
+    command: process.execPath,
+    args: [
+      "--import",
+      "tsx",
+      "src/cli.ts",
+      "serve",
+      fixture,
+      "--no-watch",
+    ],
+    stderr: "pipe",
+  });
+}
 
 describe("Bruno MCP stdio server", () => {
   it(
@@ -14,21 +29,11 @@ describe("Bruno MCP stdio server", () => {
         name: "bruno-mcp-test",
         version: "1.0.0",
       });
-      const transport = new StdioClientTransport({
-        command: process.execPath,
-        args: [
-          "--import",
-          "tsx",
-          "src/cli.ts",
-          "serve",
-          fixture,
-          "--no-watch",
-        ],
-        stderr: "pipe",
-      });
+      const transport = createTransport();
 
       try {
         await client.connect(transport);
+        expect(client.getProtocolEra()).toBe("legacy");
 
         const tools = await client.listTools();
         expect(tools.tools.map((tool) => tool.name)).toContain(
@@ -147,6 +152,49 @@ describe("Bruno MCP stdio server", () => {
             name: "Ada",
           },
         );
+      } finally {
+        await client.close();
+      }
+    },
+    15_000,
+  );
+
+  it(
+    "automatically negotiates the 2026-07-28 protocol over stdio",
+    async () => {
+      const client = new Client(
+        {
+          name: "bruno-mcp-modern-test",
+          version: "1.0.0",
+        },
+        {
+          versionNegotiation: {
+            mode: "auto",
+          },
+        },
+      );
+      const transport = createTransport();
+
+      try {
+        await client.connect(transport);
+
+        expect(client.getProtocolEra()).toBe("modern");
+        expect(client.getNegotiatedProtocolVersion()).toBe("2026-07-28");
+
+        const tools = await client.listTools();
+        expect(tools.tools).toHaveLength(8);
+
+        const status = await client.callTool({
+          name: "get_index_status",
+          arguments: {},
+        });
+        expect(status.isError).not.toBe(true);
+        expect(status.structuredContent).toMatchObject({
+          schemaVersion: 4,
+          collection: {
+            endpointCount: 2,
+          },
+        });
       } finally {
         await client.close();
       }
