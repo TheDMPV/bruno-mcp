@@ -32,7 +32,7 @@ describe("buildBrunoIndex", () => {
     expect(index.schemaVersion).toBe(4);
     expect(index.generator).toEqual({
       name: "@dmpv/bruno-mcp",
-      version: "0.5.0",
+      version: "0.6.0",
     });
     expect(index.collection.formats).toEqual(["bru"]);
     expect(index.collection.sourceFingerprint).toHaveLength(64);

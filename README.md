@@ -25,6 +25,7 @@ endpoint discovery. It never sends API requests.
 - Batch contract retrieval by stable endpoint IDs
 - Complete saved response examples without extra source parsing
 - Automatic reindexing while the MCP server is running
+- MCP `2026-07-28` support with automatic fallback for 2025-era clients
 - A reusable TypeScript API
 
 ## Requirements
@@ -65,7 +66,7 @@ Example configuration for clients that support local stdio servers:
       "command": "npx",
       "args": [
         "-y",
-        "@dmpv/bruno-mcp@0.5.0",
+        "@dmpv/bruno-mcp@0.6.0",
         "serve",
         "/absolute/path/to/bruno-collection"
       ]
@@ -73,6 +74,10 @@ Example configuration for clients that support local stdio servers:
   }
 }
 ```
+
+The stdio server automatically negotiates MCP `2026-07-28` with modern
+clients and continues to serve clients that use the 2025 initialization
+handshake.
 
 Pin a version in team configuration. During local development, replace the
 package command with `node /absolute/path/to/bruno-mcp/dist/cli.js`.
@@ -121,7 +126,7 @@ The generated JSON has a versioned top-level shape:
   "generatedAt": "2026-07-27T00:00:00.000Z",
   "generator": {
     "name": "@dmpv/bruno-mcp",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "collection": {
     "name": "Example API",

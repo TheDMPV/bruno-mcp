@@ -1,5 +1,8 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import {
+  serveStdio,
+  type StdioServerHandle,
+} from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 
 import {
@@ -15,6 +18,24 @@ import type {
 } from "./types.js";
 import { packageVersion } from "./version.js";
 import { watchBrunoCollection } from "./watcher.js";
+
+class ManagedBrunoMcpServer extends McpServer {
+  private cleanup: (() => Promise<void>) | undefined;
+
+  setCleanup(cleanup: () => Promise<void>): void {
+    this.cleanup = cleanup;
+  }
+
+  override async close(): Promise<void> {
+    const cleanup = this.cleanup;
+    this.cleanup = undefined;
+    try {
+      await cleanup?.();
+    } finally {
+      await super.close();
+    }
+  }
+}
 
 function result(value: Record<string, unknown>) {
   return {
@@ -107,7 +128,7 @@ export async function createBrunoMcpServer(
   });
   await store.initialize();
 
-  const server = new McpServer({
+  const server = new ManagedBrunoMcpServer({
     name: "bruno-mcp",
     version: packageVersion,
   });
@@ -118,7 +139,7 @@ export async function createBrunoMcpServer(
       title: "List Bruno collections",
       description:
         "Returns the active Bruno collection and its endpoint count.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     () =>
       result({
@@ -133,12 +154,12 @@ export async function createBrunoMcpServer(
       title: "List Bruno collection folders",
       description:
         "Returns a paginated collection folder hierarchy. Use parent and depth to explore a subtree without loading the complete hierarchy.",
-      inputSchema: {
+      inputSchema: z.object({
         parent: z.string().optional(),
         depth: z.number().int().min(1).max(20).optional(),
         offset: z.number().int().min(0).default(0),
         limit: z.number().int().min(1).max(100).default(50),
-      },
+      }),
     },
     (input) => result(selectFolders(store.current.folders, input)),
   );
@@ -149,7 +170,7 @@ export async function createBrunoMcpServer(
       title: "List Bruno endpoints",
       description:
         "Lists endpoint summaries, optionally filtered by method, request type, folder, or tags.",
-      inputSchema: {
+      inputSchema: z.object({
         method: z.string().optional(),
         type: z
           .enum([
@@ -163,7 +184,7 @@ export async function createBrunoMcpServer(
         pathPrefix: z.string().optional(),
         tags: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(100).default(50),
-      },
+      }),
     },
     (input) => {
       const endpoints = searchIndex(store.current, input);
@@ -180,7 +201,7 @@ export async function createBrunoMcpServer(
       title: "Search Bruno endpoints",
       description:
         "Searches endpoints with field-aware ranking. Returns score and matchedFields for every result; docs-only matches are excluded by default.",
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().min(1),
         method: z.string().optional(),
         type: z
@@ -196,7 +217,7 @@ export async function createBrunoMcpServer(
         tags: z.array(z.string()).optional(),
         search_mode: z.enum(["all", "contract", "docs"]).default("all"),
         limit: z.number().int().min(1).max(100).default(20),
-      },
+      }),
     },
     (input) => {
       const matches = searchIndexWithScores(store.current, {
@@ -216,12 +237,12 @@ export async function createBrunoMcpServer(
       title: "Get a Bruno endpoint",
       description:
         "Returns a complete sanitized endpoint contract by stable ID, or by exact method and normalized path.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string().optional(),
         method: z.string().optional(),
         path: z.string().optional(),
         include_examples: z.boolean().default(false),
-      },
+      }),
     },
     (input) => {
       if (!input.id && !input.path) {
@@ -257,10 +278,10 @@ export async function createBrunoMcpServer(
       title: "Get multiple Bruno endpoints",
       description:
         "Returns up to 25 complete sanitized endpoint contracts by stable ID in one call. Use include_examples only when complete saved responses are required.",
-      inputSchema: {
+      inputSchema: z.object({
         ids: z.array(z.string().min(1)).min(1).max(25),
         include_examples: z.boolean().default(false),
-      },
+      }),
     },
     (input) => {
       const uniqueIds = [...new Set(input.ids)];
@@ -291,11 +312,11 @@ export async function createBrunoMcpServer(
       title: "Get Bruno endpoint response examples",
       description:
         "Lean examples-only alternative to get_endpoint(include_examples: true). Returns saved status, content type, and complete response bodies without the full contract.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string().optional(),
         method: z.string().optional(),
         path: z.string().optional(),
-      },
+      }),
     },
     (input) => {
       if (!input.id && !input.path) {
@@ -334,7 +355,7 @@ export async function createBrunoMcpServer(
       title: "Get Bruno index status",
       description:
         "Returns index generation time, endpoint count, and parser warnings.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     () =>
       result({
@@ -361,20 +382,31 @@ export async function createBrunoMcpServer(
           },
         });
 
+  server.setCleanup(async () => {
+    await watcher?.close();
+  });
+
   return {
     server,
-    close: async () => {
-      await watcher?.close();
-      await server.close();
-    },
+    close: () => server.close(),
   };
 }
 
-export async function runStdioServer(
+export function runStdioServer(
   collectionPath: string,
   options: CreateServerOptions = {},
-): Promise<void> {
-  const { server } = await createBrunoMcpServer(collectionPath, options);
-  await server.connect(new StdioServerTransport());
+): StdioServerHandle {
+  const handle = serveStdio(
+    async () => {
+      const { server } = await createBrunoMcpServer(collectionPath, options);
+      return server;
+    },
+    {
+      onerror: (error) => {
+        console.error("[bruno-mcp] MCP server error:", error);
+      },
+    },
+  );
   console.error(`[bruno-mcp] Serving ${collectionPath} over stdio.`);
+  return handle;
 }
