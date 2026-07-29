@@ -26,11 +26,11 @@ program
     "Persistent index to load when it matches the collection",
   )
   .action(
-    async (
+    (
       collection: string,
       options: { watch: boolean; index?: string | undefined },
     ) => {
-      await runStdioServer(path.resolve(collection), {
+      runStdioServer(path.resolve(collection), {
         watch: options.watch,
         indexPath: options.index ? path.resolve(options.index) : undefined,
       });
